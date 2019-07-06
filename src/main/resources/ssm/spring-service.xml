@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/context
+    http://www.springframework.org/schema/context/spring-context.xsd
+    http://www.springframework.org/schema/tx
+    http://www.springframework.org/schema/tx/spring-tx.xsd">
+    <!--1.扫描需要注入的包以及子包-->
+    <context:component-scan base-package="com.sun" >
+        <context:exclude-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+        <!--use-default-filters="false" 为什么不加上，是因为我们要扫描所有的子包，除了Controller-->
+    </context:component-scan>
+    <!--2.配置 数据源和连接池进行连接-->
+    <context:property-placeholder location="classpath:jdbc.properties"/>
+    <bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+        <property name="jdbcUrl" value="${jdbc.url}"/>
+        <property name="user" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+        <property name="driverClass" value="${jdbc.driver}"/>
+
+        <property name="maxPoolSize" value="30"/>
+        <!--关闭连接之后不重连-->
+        <property name="autoCommitOnClose" value="false"/>
+        <!--检测时间-->
+        <property name="checkoutTimeout" value="10000"/>
+        <!-- 当获取连接失败重试次数 -->
+        <property name="acquireRetryAttempts" value="2"/>
+
+    </bean>
+
+
+    <!--sqlsessinFactoryBean-->
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="configLocation" value="classpath:ssm/spring-mybaties.xml"/>
+        <property name="typeAliasesPackage" value="com.sun.beans"/>
+        <property name="mapperLocations" value="classpath:mappers/*.xml"/>
+    </bean>
+    <!--sql映射文件-->
+    <bean id="mapperScannerConfigurer" class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+        <property name="basePackage" value="com.sun.dao"/>
+    </bean>
+
+
+    <!--spring事务管理-->
+    <bean id="dataSourceTransactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <!--对那个数据库进行事务处理-->
+        <property name="dataSource" ref="dataSource"/>
+        <property name="rollbackOnCommitFailure" value="true"/>
+    </bean>
+    <!--开启注解事务 说明 @Trancational ，对那个 数据库，支持什么样的事务管理 -->
+    <tx:annotation-driven transaction-manager="dataSourceTransactionManager" />
+
+    <!--ActiveMq整合-->
+    <!--1.配置连接生产者 对应相Pool这个依赖，对连接进行封装-->
+    <bean id="jmsFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+          destroy-method="stop" >
+        <property name="connectionFactory">
+            <bean class="org.apache.activemq.ActiveMQConnectionFactory">
+                <property name="brokerURL">
+                    <value>tcp://106.14.83.42:61616/</value>
+                </property>
+            </bean>
+        </property>
+       <property name="maxConnections" value="100"></property>
+    </bean>
+    <!--2.创建队列目的地，将消息发送到对应的地方-->
+    <bean id="queueDestination" class="org.apache.activemq.command.ActiveMQQueue">
+        <constructor-arg index="0" value="spring-learn-queue" />
+    </bean>
+
+    <!--3.使用JMSTemplate进行封装,对QUEUE消息进行发送和接收-->
+    <bean id="jmsTemplateQueue" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="jmsFactory"></property>
+        <property name="defaultDestination" ref="queueDestination"></property>
+        <property name="messageConverter">
+            <bean class="org.springframework.jms.support.converter.SimpleMessageConverter"></bean>
+        </property>
+    </bean>
+    <!--2.创建主题目的地，将消息发送到对应的地方-->
+    <bean id="topicDestination" class="org.apache.activemq.command.ActiveMQTopic">
+        <constructor-arg index="0" value="spring-learn-topic" />
+    </bean>
+    <!--3.使用JMSTemplate进行封装,对TOPIC消息进行发送和接收-->
+    <bean id="jmsTemplateTopic" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="jmsFactory"></property>
+        <property name="defaultDestination" ref="topicDestination"></property>
+        <property name="messageConverter">
+            <bean class="org.springframework.jms.support.converter.SimpleMessageConverter"></bean>
+        </property>
+    </bean>
+</beans>
